@@ -10,17 +10,17 @@ require_once "functions.php";
                 if ( $request->controlValue($query) ){
                     $response->send($query);
                 }else{
-                    $response->queryError($query);
+                    $response->queryError([$query]);
                 }
             }else{
                 $response->send(
-                    ["message" => "Only one query per request allowed"],
+                    ["status"=>400, "message" => "Only one query per request allowed", ],
                     400
                 );
             }
         }else{
             $allUsers = $db->getAll($filename);
-            $response->send($allUsers);
+            $response->send(["status"=>200, "users" => $allUsers]);
         }
     }else{
         $response->send(

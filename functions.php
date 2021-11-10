@@ -61,6 +61,7 @@ error_reporting(-1);
                 $array = explode("&", $_SERVER["QUERY_STRING"]);
                 foreach ( $array as $queryStrings ){
                     $queryArray = explode("=", $queryStrings);
+                    if( count($queryArray) < 2 ) $queryArray[] = "";
                     if( strpos($queryArray[1], "," ) ){
                         $queryArray[1] = explode(",", $queryArray[1]);
                     }
@@ -106,15 +107,15 @@ error_reporting(-1);
             $val = $query[$param];
             switch ($param) {
                 case 'id':
-                    $this->send( ["error" => "Query 'id' must be of type int"], 400 );
+                    $this->send( ["message" => "Query 'id' must be of type int", "status" => 400 ], 400 );
                     break;
                 
                 case 'ids':
-                    $this->send( ["error" => "Query 'ids' must be of type array and values of type int"], 400 );
+                    $this->send( ["message" => "Query 'ids' must be of type array and values of type int", "status" => 400], 400 );
                     break;
                 
                 case 'limit':
-                    $this->send( ["error" => "Query 'limit' must be of type int"], 400 );
+                    $this->send( ["message" => "Query 'limit' must be of type int", "status" => 400], 400 );
                     break;
             }
         }
