@@ -4,7 +4,6 @@ namespace Functions;
 $db = new Database();
 $request = new Request();
 $response = new Response();
-$filename = "database.json";
 
 error_reporting(-1);
     class Database{
@@ -17,23 +16,61 @@ error_reporting(-1);
             return $db;
         }
 
-        function find($id, $filename){
+        function limitUsers($filename, $length){
+            $allUsers = $this->getAll($filename);
+            shuffle($allUsers);
+            $limitedUsers = array_slice($allUsers, 0, $length);
+            return $limitedUsers;
+        }
+
+        function find($filename, $id){
             $db = $this->open($filename);
             $column = array_column($db, "id");
             $index = array_search($id, $column);
+            if( $index === false ){
+                return false;
+            }
             return $db[$index];
         }
 
-        function create($id, $filename){
+        function create($filename, $user){
 
         }
 
-        function delete(){
+        function delete($filename, $id){
 
         }
 
-        function update(){
+        function update($filename, $id, $user){
 
+        }
+
+        function getRequest($filename, $query){
+            $key = key($query);
+            $value = $query[$key];
+            switch ($key) {
+                case 'id':
+                    return $this->find($filename, $value);
+                    break;
+                case 'limit':
+                    return $this->limitUsers($filename, $value);
+                    break;
+                case 'ids':
+                    $errors = [];
+                    $users = [];
+                    foreach( $value as $id ){
+                        $userFound = $this->find($filename, $id);
+                        if( !$userFound ){
+                            array_push($errors, ["status" => 404, "message" => "User id $id not found"]);
+                        }else {
+                            array_push($users, $userFound);
+                        }
+                    }
+                    $response["users"] = $users;
+                    $response["errors"] = $errors;
+                    return $response;
+                    break;
+            }
         }
     }
 
@@ -55,21 +92,25 @@ error_reporting(-1);
         }
 
         function getQuery(){
-            $query = [];
             // TODO: create control that only array queries are allowed arrays as value.
             if( strpos($_SERVER["QUERY_STRING"], "&") ){
                 $array = explode("&", $_SERVER["QUERY_STRING"]);
-                foreach ( $array as $queryStrings ){
-                    $queryArray = explode("=", $queryStrings);
-                    if( strpos($queryArray[1], "," ) ){
-                        $queryArray[1] = explode(",", $queryArray[1]);
-                    }
-                    array_push($query, [$queryArray[0]=>$queryArray[1]]);
+                foreach( $array as $queryStrings ){
+                    $query = $this->explodeQuery($queryStrings);
                 }
             }else{
-                $queryArray = explode("=", $_SERVER["QUERY_STRING"]);
-                array_push($query, [$queryArray[0]=>$queryArray[1]]);
+                $query = $this->explodeQuery($_SERVER["QUERY_STRING"]);
         }
+            return $query;
+        }
+
+        function explodeQuery($queryString){
+            $query = [];
+            $queryArray = explode("=", $queryString);
+            if( strpos($queryArray[1], "," ) ){
+                $queryArray[1] = explode(",", $queryArray[1]);
+            }
+            array_push($query, [$queryArray[0]=>$queryArray[1]]);
             return $query;
         }
 
@@ -78,15 +119,22 @@ error_reporting(-1);
             $val = $query[$param];
             switch ($param) {
                 case 'id':
-                    intVal($val) ? true : false;
+                    return is_numeric($val);
                     break;
                 
                 case 'ids':
-                    is_array( $val) ? true : false;
+                    if ( is_array($val) ){
+                        foreach($val as $id){
+                            if ( !is_numeric($id) ) {
+                                return is_numeric($id);
+                            }
+                        }
+                    }
+                    return is_array($val);
                     break;
                 
                 case 'limit':
-                    intVal($val) ? true : false;
+                    return is_numeric($val);
                     break;
             }
         }        
@@ -106,15 +154,15 @@ error_reporting(-1);
             $val = $query[$param];
             switch ($param) {
                 case 'id':
-                    $this->send( ["error" => "Query 'id' must be of type int"], 400 );
+                    $this->send( ["status" => 400, "message" => "Query 'id' must be of type int"], 400 );
                     break;
                 
                 case 'ids':
-                    $this->send( ["error" => "Query 'ids' must be of type array and values of type int"], 400 );
+                    $this->send( ["status" => 400, "message" => "Query 'ids' must be of type array and values of type int"], 400 );
                     break;
                 
                 case 'limit':
-                    $this->send( ["error" => "Query 'limit' must be of type int"], 400 );
+                    $this->send( ["status" => 400, "message" => "Query 'limit' must be of type int"], 400 );
                     break;
             }
         }
