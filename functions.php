@@ -1,11 +1,12 @@
 <?php
 namespace Functions;
 
+error_reporting(-1);
+
 $db = new Database();
 $request = new Request();
 $response = new Response();
 
-error_reporting(-1);
     class Database{
         function open($filename){
             return json_decode(file_get_contents($filename), true);
@@ -30,19 +31,83 @@ error_reporting(-1);
             if( $index === false ){
                 return false;
             }
+            return $index;
+        }
+
+        function read($filename, $id){
+            $index = $this->find($filename, $id);
+            if( $index === false ){
+                return false;
+            }
+            $db = $this->open($filename);
             return $db[$index];
         }
 
-        function create($filename, $user){
+        // TODO: IF FILE DOES NOT EXIST, no error message yet
+        function create($filename, $userData){
+            $request = new Request();
+            $response = new Response();
+            $db = $this->open($filename);
+            $newID = $this->getMaxID($filename) + 1;
+            $userData["id"] = $newID;
+            
+            foreach( $userData as $key=>$value ){
+                $val = [$key=>$value];
+                $control = $request->controlValue($val);
+                if( !$control ){
+                    $typeError = $response->queryError($val);
+                    $response = [
+                        "status"=>400, 
+                        "user"=>$userData,
+                        "error"=>$typeError["message"]
+                    ];
+                    return $response;
+                }
+            }
 
+            $db[] = $userData;
+            $json = json_encode($db, JSON_PRETTY_PRINT);
+            file_put_contents($filename, $json);
+            $response = [
+                "status"=>200, "user"=>$userData
+            ];
+            return $response;
         }
 
         function delete($filename, $id){
-
+            $user = $this->find($filename, $id);
+            if( $user === false ){
+                return ["status"=>404, "error"=>"User not found", "users"=>""];
+            }
+            $db = $this->open($filename);
+            
+            array_splice($db,$user,1);
+            $json = json_encode($db, JSON_PRETTY_PRINT);
+            file_put_contents($filename, $json);
+            $response = [
+                "status"=>200,
+                "deletedUser"=>$id,
+            ];
+            return $response;
         }
 
-        function update($filename, $id, $user){
+        function update($filename, $userData){
+            $id = $userData["id"];
+            $db = $this->open($filename);
+            $userIndex = $this->find($filename, $id);
 
+            foreach( array_keys($userData) as $key ){
+                $db[$userIndex][$key] = $userData[$key];
+            }
+
+            $json = json_encode($db, JSON_PRETTY_PRINT);
+            file_put_contents($filename, $json);
+
+            $response = [
+                "status"=>200,
+                "updatedUser"=>$db[$userIndex]
+            ];
+            return $response;
         }
 
         function getRequest($filename, $query){
@@ -50,20 +115,25 @@ error_reporting(-1);
             $value = $query[$key];
             switch ($key) {
                 case 'id':
-                    return $this->find($filename, $value);
+                    $user = $this->read($filename, $value);
+                    if ( !$user ) {
+                        return ["status" => 404, "users"=>"", "errors" => "User does not exist"];
+                    }
+                    return ["users" => $user];
                     break;
                 case 'limit':
-                    return $this->limitUsers($filename, $value);
+                    $limitedUsers = $this->limitUsers($filename, $value);
+                    return ["users"=>$limitedUsers];
                     break;
                 case 'ids':
                     $errors = [];
                     $users = [];
                     foreach( $value as $id ){
-                        $userFound = $this->find($filename, $id);
-                        if( !$userFound ){
+                        $user = $this->read($filename, $id);
+                        if( !$user ){
                             array_push($errors, ["status" => 404, "message" => "User id $id not found"]);
                         }else {
-                            array_push($users, $userFound);
+                            array_push($users, $user);
                         }
                     }
                     $response["users"] = $users;
@@ -72,9 +142,16 @@ error_reporting(-1);
                     break;
             }
         }
+
+        function getMaxID($filename){
+            $db = $this->open($filename);
+            $column = array_column($db, "id");
+            $maxID = max($column);
+            return $maxID;
+        }
     }
 
-    class Request{
+    class Request extends Database{
         function isContentType($type){
             return $_SERVER["CONTENT_TYPE"] === $type;
         }
@@ -119,6 +196,8 @@ error_reporting(-1);
             $val = $query[$param];
             switch ($param) {
                 case 'id':
+                case 'limit':
+                case 'age':
                     return is_numeric($val);
                     break;
                 
@@ -133,11 +212,62 @@ error_reporting(-1);
                     return is_array($val);
                     break;
                 
-                case 'limit':
-                    return is_numeric($val);
+                case 'first_name':
+                case 'last_name':
+                    return is_string($val);
+                    break;
+                
+                case 'email':
+                    return strpos($val, "@");
                     break;
             }
-        }        
+        }
+        
+        function checkKeys($type, $values){
+            switch ($type) {
+                case 'create':
+                    $keys = [
+                        "first_name",
+                        "last_name",
+                        "email",
+                        "age"
+                    ];
+                    return $this->compareKeys($keys, $values);
+                    break;
+
+                case 'delete':
+                    $keys = [
+                        "id"
+                    ];
+                    return $this->compareKeys($keys, $values);
+                    break;
+                
+                case 'update':
+                    $keys = [
+                        "id"
+                    ];
+                    if ( count($values) < 2 ){
+                        return false;
+                    }
+
+                    $comparison = $this->compareKeys($keys, $values);
+                    if ( $comparison ) {
+                        return $comparison;
+                    }
+
+                    return true;
+                    break;
+            }
+        }
+
+        function compareKeys($key, $input){
+            $missingKeys = array_diff($keys, array_keys($input));
+            if ( !$missingKeys ){
+                return false;
+            }else{
+                return $missingKeys;
+            }
+        }
 }
 
     class Response{
@@ -154,15 +284,22 @@ error_reporting(-1);
             $val = $query[$param];
             switch ($param) {
                 case 'id':
-                    $this->send( ["status" => 400, "message" => "Query 'id' must be of type int"], 400 );
+                case 'age':
+                case 'limit':
+                    return ["status" => 400, "message" => "'$param' must be of type int"];
+                    break;
+
+                case 'first_name':
+                case 'last_name':
+                    return ["status" => 400, "message" => "'$param' must be of type int"];
                     break;
                 
                 case 'ids':
-                    $this->send( ["status" => 400, "message" => "Query 'ids' must be of type array and values of type int"], 400 );
+                    return ["status" => 400, "message" => "'$param' must be of type array and values of type int"];
                     break;
                 
-                case 'limit':
-                    $this->send( ["status" => 400, "message" => "Query 'limit' must be of type int"], 400 );
+                case 'email':
+                    return ["status" => 400, "message" => "'$param' must be a valid email"];
                     break;
             }
         }

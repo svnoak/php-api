@@ -18,7 +18,8 @@ $filename = "database.json";
                     }
                     $response->send(["status" => 200, "users" => $users]);
                 }else{
-                    $response->queryError($query);
+                    $errorResponse = $response->queryError($query);
+                    $response->send($errorResponse, $errorResponse["status"]);
                 }
             }else{
                 // Only a placeholder.
